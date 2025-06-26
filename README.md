@@ -1,5 +1,12 @@
 # Kurzanleitung für die Installation der Entwicklungsumgebung zum Basisprojekt im Modul 324
 
+## UPDATES (von main branch)(causing a merge conflict)
+- 🔧 Backend optimizations and bug fixes
+- 📝 Updated documentation and setup instructions
+- 🚀 Performance improvements in Spring Boot configuration
+- 🛡️ Security enhancements and dependency updates
+- 📱 Mobile responsive design improvements
+
 ## TLDR 
 
 ToDo-Liste mit React (frontend) und Spring (backend). Weitere Details sind in den
