@@ -31,7 +31,9 @@ describe('Todo App', () => {
   test('renders input field and submit button', async () => {
     render(<App />);
     
-    expect(screen.getByRole('textbox')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByRole('textbox')).toBeInTheDocument();
+    });
     expect(screen.getByRole('button', { name: /absenden/i })).toBeInTheDocument();
   });
 
@@ -58,18 +60,16 @@ describe('Todo App', () => {
   });
 
   test('input field updates when typing', async () => {
-    const user = userEvent.setup();
     render(<App />);
 
-    const input = screen.getByRole('textbox');
+    const input = await screen.findByRole('textbox');
     
-    await user.type(input, 'New task');
+    await userEvent.type(input, 'New task');
     
     expect(input.value).toBe('New task');
   });
 
   test('handles form submission', async () => {
-    const user = userEvent.setup();
     // Mock successful POST response
     fetch.mockResolvedValueOnce({
       ok: true,
@@ -78,16 +78,16 @@ describe('Todo App', () => {
 
     render(<App />);
 
-    const input = screen.getByRole('textbox');
+    const input = await screen.findByRole('textbox');
     const submitButton = screen.getByRole('button', { name: /absenden/i });
     
-    await user.type(input, 'New task');
-    await user.click(submitButton);
+    await userEvent.type(input, 'New task');
+    await userEvent.click(submitButton);
     
     // Check if fetch was called with correct data
     await waitFor(() => {
       expect(fetch).toHaveBeenCalledWith(
-        "http://localhost:8080/addTask",
+        "http://localhost:8080/tasks",
         expect.objectContaining({
           method: "POST",
           headers: {
@@ -151,7 +151,6 @@ describe('Todo App', () => {
   });
 
   test('handles done button click', async () => {
-    const user = userEvent.setup();
     const mockTodos = [
       { taskdescription: 'Buy groceries' }
     ];
@@ -176,7 +175,7 @@ describe('Todo App', () => {
 
     const doneButton = screen.getByText('Done');
     
-    await user.click(doneButton);
+    await userEvent.click(doneButton);
     
     // Check if delete fetch was called
     await waitFor(() => {
