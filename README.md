@@ -1,5 +1,12 @@
 # Kurzanleitung für die Installation der Entwicklungsumgebung zum Basisprojekt im Modul 324
 
+## NEUE FEATURES (von features branch) (causing a merge conflict)
+- ✨ Real-time search and filter functionality implemented
+- 🎨 Modern dark theme design with improved UX
+- 📊 Todo statistics and filtered count display
+- 🔍 Case-insensitive search with clear button
+- 🧪 Comprehensive JUnit test suite (8 tests total)
+
 ## TLDR 
 
 ToDo-Liste mit React (frontend) und Spring (backend). Weitere Details sind in den
