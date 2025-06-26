@@ -1,25 +1,25 @@
-# workflow with upload of artifacts for backend and frontend
+# workflow with build and tests for backend and frontend
 # two separate jobs for backend and frontend run in parallel
+# both jobs are using docker images instead of using github actions in dedicated steps 
+# backend: maven:3.9-eclipse-temurin-17
+# frontend: node:20
 
 name: Java & Frontend CI
 
 on:
+  push:
+    branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
 
 jobs:
   backend-build:
     runs-on: ubuntu-latest
+    container:
+      image: maven:3.9-eclipse-temurin-17
     name: Backend Build & Test (Maven)
     steps:
       - uses: actions/checkout@v3
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v3
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-          cache: maven
 
       - name: Test
         run: mvn -f backend/ --batch-mode test
@@ -27,12 +27,6 @@ jobs:
 
       - name: Build with Maven
         run: mvn --batch-mode package --file backend/pom.xml
-
-      - name: Upload backend artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: backend-jar
-          path: backend/target/*.jar
 
       - name: Report
         uses: dorny/test-reporter@v1
@@ -43,18 +37,13 @@ jobs:
           reporter: java-junit
           fail-on-error: true
 
-  frontend-build:
+  frontend-test:
     runs-on: ubuntu-latest
-    name: Frontend Build & Test (Node/Vitest)
+    container:
+      image: node:20
+    name: Frontend Test (Vitest)
     steps:
       - uses: actions/checkout@v3
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
 
       - name: Install frontend dependencies
         working-directory: frontend
@@ -62,16 +51,4 @@ jobs:
 
       - name: Run Vitest
         working-directory: frontend
-        run: npm test -- --watchAll=false --verbose
- 
-
-      - name: Build frontend
-        working-directory: frontend
-        run: npm run build
-
-      - name: Upload frontend artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: frontend-build
-          path: frontend/dist
-
+        run: npm run test -- --run
