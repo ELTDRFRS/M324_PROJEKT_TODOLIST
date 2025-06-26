@@ -62,7 +62,8 @@ jobs:
 
       - name: Run Vitest
         working-directory: frontend
-        run: npm run test -- --run
+        run: npm test -- --watchAll=false --verbose
+ 
 
       - name: Build frontend
         working-directory: frontend
