@@ -41,7 +41,7 @@ jobs:
 
   frontend-test:
     runs-on: ubuntu-latest
-    name: Frontend Test (Vitest)
+    name: Frontend Test (React/Jest)
     steps:
       - uses: actions/checkout@v3
 
@@ -56,6 +56,6 @@ jobs:
         working-directory: frontend
         run: npm ci
 
-      - name: Run Vitest
+      - name: Run React Tests
         working-directory: frontend
-        run: npm test -- --watchAll=false --verbose 
+        run: npm test -- --watchAll=false --verbose
