@@ -19,7 +19,15 @@ jobs:
       image: maven:3.9-eclipse-temurin-17
     name: Backend Build & Test (Maven)
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Git
+        run: |
+          git config --global --add safe.directory '*'
+          git config --global user.name "github-actions"
+          git config --global user.email "github-actions@github.com"
 
       - name: Test
         run: mvn -f backend/ --batch-mode test
@@ -29,7 +37,7 @@ jobs:
         run: mvn --batch-mode package --file backend/pom.xml
 
       - name: Report
-        uses: dorny/test-reporter@v1
+        uses: dorny/test-reporter@v1.9.1
         if: always()
         with:
           name: Maven Tests
@@ -43,7 +51,15 @@ jobs:
       image: node:20
     name: Frontend Test (Vitest)
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Git
+        run: |
+          git config --global --add safe.directory '*'
+          git config --global user.name "github-actions"
+          git config --global user.email "github-actions@github.com"
 
       - name: Install frontend dependencies
         working-directory: frontend
