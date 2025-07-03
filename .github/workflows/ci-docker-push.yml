@@ -37,7 +37,7 @@ jobs:
         run: |
           cd frontend
           npm ci
-          npm run test -- --run
+          npm run test -- --watchAll=false
           npm run build
 
       # ---------- Docker Buildx ----------
