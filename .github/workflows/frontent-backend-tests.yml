@@ -1,389 +1,71 @@
-# Comprehensive Docker-based CI/CD Pipeline for M324 Todo List Project
-# Full backend testing with Docker containerization, code coverage, and security scanning
-# Parallel frontend and backend jobs with comprehensive testing strategies
-
-name: M324 Todo List CI/CD Pipeline
+name: CI & Docker push
 
 on:
   push:
-    branches: [ "main", "develop" ]
+    branches: [ main ]
   pull_request:
-    branches: [ "main", "develop" ]
-  workflow_dispatch: # Allow manual trigger
-
-env:
-  MAVEN_OPTS: -Dhttp.keepAlive=false -Dmaven.wagon.http.pool=false -Dmaven.wagon.http.retryHandler.class=standard -Dmaven.wagon.http.retryHandler.count=3
-  JAVA_VERSION: '17'
-  NODE_VERSION: '20'
+    branches: [ main ]
 
 jobs:
-  # Backend Testing Pipeline with Docker
-  backend-comprehensive-test:
+  build-and-push:
     runs-on: ubuntu-latest
-    container:
-      image: maven:3.9-eclipse-temurin-17
-      options: --user root # Ensure proper permissions
-    
-    name: Backend Comprehensive Testing (Docker)
-    
-    strategy:
-      matrix:
-        test-profile: [unit, integration, all]
-    
+    env:
+      IMAGE_NS: ghcr.io/${{ github.repository_owner }}/m324_projekt_todolist
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v3
+
+      # ---------- Maven (Backend) ----------
+      - uses: actions/setup-java@v3
         with:
-          fetch-depth: 0
+          java-version: 17
+          distribution: temurin
+          cache: maven
 
-      - name: Setup Git Configuration
+      - name: Backend tests & package
         run: |
-          git config --global --add safe.directory '*'
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          mvn -f backend/ -B test
+          mvn -f backend/ -B package -DskipTests
 
-      - name: Cache Maven Dependencies
-        uses: actions/cache@v4
+      # ---------- Node (Frontend) ----------
+      - uses: actions/setup-node@v3
         with:
-          path: ~/.m2/repository
-          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
-          restore-keys: ${{ runner.os }}-maven-
-
-      - name: Verify Maven Installation
-        run: |
-          mvn --version
-          java --version
-          echo "JAVA_HOME: $JAVA_HOME"
-
-      - name: Validate Project Structure
-        run: |
-          echo "Backend project structure:"
-          ls -la backend/
-          echo "POM.xml content validation:"
-          mvn -f backend/pom.xml help:effective-pom -q
-
-      - name: Compile Backend Code
-        run: |
-          echo "Compiling backend with Maven..."
-          mvn -f backend/pom.xml clean compile --batch-mode --no-transfer-progress
-        
-      - name: Run Unit Tests (${{ matrix.test-profile }})
-        run: |
-          echo "Running ${{ matrix.test-profile }} tests..."
-          case "${{ matrix.test-profile }}" in
-            "unit")
-              mvn -f backend/pom.xml test -Dtest="*Test" --batch-mode --no-transfer-progress
-              ;;
-            "integration")
-              mvn -f backend/pom.xml test -Dtest="*IT,*IntegrationTest" --batch-mode --no-transfer-progress
-              ;;
-            "all")
-              mvn -f backend/pom.xml test --batch-mode --no-transfer-progress
-              ;;
-          esac
-        continue-on-error: false
-
-      - name: Generate Test Coverage Report
-        if: matrix.test-profile == 'all'
-        run: |
-          echo "Generating test coverage report..."
-          mvn -f backend/pom.xml jacoco:report --batch-mode --no-transfer-progress
-
-      - name: Verify Test Coverage Thresholds
-        if: matrix.test-profile == 'all'
-        run: |
-          echo "Checking coverage thresholds..."
-          mvn -f backend/pom.xml jacoco:check --batch-mode --no-transfer-progress
-        continue-on-error: true
-
-      - name: Package Application
-        if: matrix.test-profile == 'all'
-        run: |
-          echo "Packaging Spring Boot application..."
-          mvn -f backend/pom.xml package -DskipTests --batch-mode --no-transfer-progress
-
-      - name: Verify JAR File
-        if: matrix.test-profile == 'all'
-        run: |
-          echo "Verifying generated JAR file..."
-          ls -la backend/target/
-          if [ -f backend/target/*.jar ]; then
-            echo "JAR file successfully generated"
-            java -jar backend/target/*.jar --version || echo "JAR verification completed"
-          else
-            echo "JAR file not found!"
-            exit 1
-          fi
-
-      - name: Upload Test Results
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: backend-test-results-${{ matrix.test-profile }}
-          path: |
-            backend/target/surefire-reports/
-            backend/target/site/jacoco/
-          retention-days: 30
-
-      - name: Publish Test Report
-        uses: dorny/test-reporter@v1.9.1
-        if: always()
-        with:
-          name: Backend Tests (${{ matrix.test-profile }})
-          path: backend/target/surefire-reports/*.xml
-          reporter: java-junit
-          fail-on-error: true
-          max-annotations: 50
-
-  # Security and Code Quality Analysis
-  backend-security-analysis:
-    runs-on: ubuntu-latest
-    container:
-      image: maven:3.9-eclipse-temurin-17
-      options: --user root
-    
-    name: Backend Security & Code Quality (Docker)
-    needs: [backend-comprehensive-test]
-    
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Setup Git Configuration
-        run: |
-          git config --global --add safe.directory '*'
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-
-      - name: Cache Maven Dependencies
-        uses: actions/cache@v4
-        with:
-          path: ~/.m2/repository
-          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
-
-      - name: OWASP Dependency Check
-        run: |
-          echo "Running OWASP dependency vulnerability scan..."
-          mvn -f backend/pom.xml org.owasp:dependency-check-maven:check --batch-mode --no-transfer-progress
-        continue-on-error: true
-
-      - name: SpotBugs Analysis
-        run: |
-          echo "Running SpotBugs static analysis..."
-          mvn -f backend/pom.xml compile spotbugs:check --batch-mode --no-transfer-progress
-        continue-on-error: true
-
-      - name: PMD Code Analysis
-        run: |
-          echo "Running PMD code analysis..."
-          mvn -f backend/pom.xml pmd:check --batch-mode --no-transfer-progress
-        continue-on-error: true
-
-      - name: Upload Security Reports
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: backend-security-reports
-          path: |
-            backend/target/dependency-check-report.html
-            backend/target/spotbugsXml.xml
-            backend/target/pmd.xml
-          retention-days: 30
-
-  # Docker Image Build and Test
-  backend-docker-integration:
-    runs-on: ubuntu-latest
-    name: Backend Docker Integration Test
-    needs: [backend-comprehensive-test]
-    
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Create Dockerfile for Backend
-        run: |
-          cat > backend/Dockerfile << 'EOF'
-          FROM maven:3.9-eclipse-temurin-17 AS builder
-          WORKDIR /app
-          COPY pom.xml .
-          RUN mvn dependency:go-offline -B
-          COPY src ./src
-          RUN mvn clean package -DskipTests -B
-          
-          FROM eclipse-temurin:17-jre-alpine
-          WORKDIR /app
-          COPY --from=builder /app/target/*.jar app.jar
-          EXPOSE 8080
-          HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-            CMD curl -f http://localhost:8080/actuator/health || exit 1
-          ENTRYPOINT ["java", "-jar", "app.jar"]
-          EOF
-
-      - name: Build Docker Image
-        run: |
-          echo "Building Docker image for backend..."
-          docker build -t m324-todo-backend:test backend/
-
-      - name: Test Docker Image
-        run: |
-          echo "Testing Docker image..."
-          docker run --rm --name test-container -d -p 8080:8080 m324-todo-backend:test
-          sleep 30
-          
-          echo "Checking if application is running..."
-          if curl -f http://localhost:8080/actuator/health; then
-            echo "✅ Backend Docker container is healthy"
-          else
-            echo "❌ Backend Docker container health check failed"
-            docker logs test-container
-            exit 1
-          fi
-          
-          docker stop test-container
-
-  # Frontend Testing Pipeline
-  frontend-test:
-    runs-on: ubuntu-latest
-    container:
-      image: node:20-alpine
-    name: Frontend Testing (Docker)
-    
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Setup Git Configuration
-        run: |
-          git config --global --add safe.directory '*'
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-
-      - name: Install Dependencies
-        working-directory: frontend
-        run: |
-          echo "Installing frontend dependencies..."
-          npm ci --prefer-offline --no-audit
-
-      - name: Lint Frontend Code
-        working-directory: frontend
-        run: |
-          echo "Running ESLint..."
-          npm run lint || echo "Linting completed with warnings"
-        continue-on-error: true
-
-      - name: Run Frontend Tests
-        working-directory: frontend
-        run: |
-          echo "Running frontend tests..."
-          npm test -- --watchAll=false --verbose --coverage
-
-      - name: Upload Frontend Test Coverage
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: frontend-coverage
-          path: frontend/coverage/
-          retention-days: 30
-
-  # Integration Testing
-  end-to-end-testing:
-    runs-on: ubuntu-latest
-    name: End-to-End Integration Tests
-    needs: [backend-comprehensive-test, frontend-test]
-    
-    services:
-      backend:
-        image: maven:3.9-eclipse-temurin-17
-        options: --health-cmd="curl -f http://localhost:8080/actuator/health" --health-interval=30s --health-timeout=10s --health-retries=5
-    
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
+          node-version: 20
+          cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      - name: Install Cypress
-        working-directory: frontend
+      - name: Frontend tests & build
         run: |
+          cd frontend
           npm ci
-          npx cypress install
+          npm run test -- --run
+          npm run build
 
-      - name: Start Backend Service
+      # ---------- Docker Buildx ----------
+      - name: Lowercase owner and repo
         run: |
-          cd backend
-          mvn spring-boot:run &
-          echo $! > backend.pid
-          sleep 30
-        
-      - name: Start Frontend Service
-        working-directory: frontend
-        run: |
-          npm start &
-          echo $! > frontend.pid
-          sleep 15
+          echo "OWNER=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+          echo "REPO=$(echo '${{ github.event.repository.name }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
 
-      - name: Run Cypress E2E Tests
-        working-directory: frontend
-        run: |
-          echo "Running end-to-end tests..."
-          npx cypress run --spec "cypress/e2e/**/*.cy.js"
+      - uses: docker/setup-buildx-action@v2
 
-      - name: Upload E2E Test Results
-        uses: actions/upload-artifact@v4
-        if: always()
+      - uses: docker/login-action@v2
         with:
-          name: cypress-results
-          path: |
-            frontend/cypress/videos/
-            frontend/cypress/screenshots/
-          retention-days: 30
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GHCR_PAT }}
 
-      - name: Cleanup Services
-        if: always()
-        run: |
-          if [ -f backend/backend.pid ]; then
-            kill $(cat backend/backend.pid) || true
-          fi
-          if [ -f frontend/frontend.pid ]; then
-            kill $(cat frontend/frontend.pid) || true
-          fi
+      # ---------- Build & push backend ----------
+      - uses: docker/build-push-action@v4
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: true
+          tags: ghcr.io/${{ env.OWNER }}/${{ env.REPO }}/todo-backend:latest
 
-  # Final Status Check
-  pipeline-status:
-    runs-on: ubuntu-latest
-    name: Pipeline Status Summary
-    needs: [backend-comprehensive-test, backend-security-analysis, backend-docker-integration, frontend-test, end-to-end-testing]
-    if: always()
-    
-    steps:
-      - name: Pipeline Summary
-        run: |
-          echo "🎯 M324 Todo List CI/CD Pipeline Summary"
-          echo "======================================="
-          echo "Backend Comprehensive Tests: ${{ needs.backend-comprehensive-test.result }}"
-          echo "Backend Security Analysis: ${{ needs.backend-security-analysis.result }}"
-          echo "Backend Docker Integration: ${{ needs.backend-docker-integration.result }}"
-          echo "Frontend Tests: ${{ needs.frontend-test.result }}"
-          echo "End-to-End Tests: ${{ needs.end-to-end-testing.result }}"
-          echo "======================================="
-          
-          if [[ "${{ needs.backend-comprehensive-test.result }}" == "success" && 
-                "${{ needs.frontend-test.result }}" == "success" ]]; then
-            echo "✅ All critical tests passed!"
-            exit 0
-          else
-            echo "❌ Some critical tests failed!"
-            exit 1
-          fi
+      # ---------- Build & push frontend ----------
+      - uses: docker/build-push-action@v4
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile
+          push: true
+          tags: ghcr.io/${{ env.OWNER }}/${{ env.REPO }}/todo-frontend:latest
