@@ -51,7 +51,9 @@ class App extends React.Component {
     super(props);      // ensure that the constructor of the parent class (React.Component) is properly called.
     this.state = {
       todos: typeof props.todos === 'undefined' ? [] : props.todos,
-      taskdescription: ""
+      taskdescription: "",
+      apiVersion: "v1",  // Default to v1 for backward compatibility
+      searchTerm: ""
     };
     // **( Remark:
     // If props.todos is of the type undefined, the expression typeof props.todos === 'undefined' will return true,
@@ -70,31 +72,51 @@ class App extends React.Component {
     this.setState({ taskdescription: event.target.value });
   }
 
+  handleVersionChange = event => {
+    this.setState({ apiVersion: event.target.value }, () => {
+      // Reload tasks when version changes
+      this.loadTasks();
+    });
+  }
+
+  handleSearchChange = event => {
+    this.setState({ searchTerm: event.target.value });
+  }
+
  /** Is called when the html form is submitted. It sends a POST request to the API endpoint '/tasks' and updates the component's state with the new todo.
   ** In this case a new taskdecription is added to the actual list on the server.
   */
   handleSubmit = event => {
     event.preventDefault();
-    console.log("Sending task description to Spring-Server: "+this.state.taskdescription);
+    console.log(`Sending task description to Spring-Server (${this.state.apiVersion}): ${this.state.taskdescription}`);
     fetch("http://localhost:8080/api/tasks", {  // API endpoint (the complete URL!) to save a taskdescription
       method: "POST",
       headers: {
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        "API-Version": this.state.apiVersion  // Add API version header
       },
       body: JSON.stringify({ taskdescription: this.state.taskdescription }) // both 'taskdescription' are identical to Task-Class attribute in Spring
     })
     .then(response => {
-      console.log("Receiving answer after sending to Spring-Server: ");
+      console.log(`Receiving answer after sending to Spring-Server (${this.state.apiVersion}): `);
       console.log(response);
-      // window.location.href = "/"; // refresh window -> forces call of componentDidMount() to display the actual new list (with "flashing"!)
-      // Alternative solution to the upper line without refresh "flashing":
-      // add the new Task to list (temporary solution to show it immediately):
-      //const newTodos = this.state.todos.slice(); // creates a copy of the current todos state, which returns a shallow copy of the array.
-      //newTodos.push({taskdescription: this.state.taskdescription});    // pushes the new task object to the copy of the todos state array using the task.task attribute.
-      this.setState({
-        todos: [...this.state.todos, {taskdescription: this.state.taskdescription}]
-      });          // updates the component state with the new todos array.
-      this.setState({taskdescription: ""});             // clear input field, preparing it for the next input
+      
+      if (this.state.apiVersion === "v2") {
+        // For v2, handle JSON response with enhanced task object
+        return response.json();
+      }
+      
+      // For v1, just reload the tasks
+      this.loadTasks();
+      this.setState({taskdescription: ""});             // clear input field
+    })
+    .then(data => {
+      if (this.state.apiVersion === "v2" && data) {
+        // Handle v2 response with enhanced task object
+        console.log("V2 Response data:", data);
+        this.loadTasks(); // Reload to get the full updated list
+        this.setState({taskdescription: ""});             // clear input field
+      }
     })
     .catch(error => console.log(error))
   }
@@ -103,34 +125,86 @@ class App extends React.Component {
   ** It updates the component's state with the fetched todos from the API Endpoint '/'.
   */
   componentDidMount() {
-    fetch("http://localhost:8080/api")    // API endpoint (the complete URL!) to get a taskdescription-list
-      .then(response => response.json())
-      .then(data => {
-        console.log("Receiving task list data from Spring-Server: ");
-        console.log(data);
-        this.setState({todos: data});  // set the whole list at once
+    this.loadTasks();
+  }
+
+  loadTasks = () => {
+    console.log(`Loading tasks with API version: ${this.state.apiVersion}`);
+    fetch("http://localhost:8080/api/", {
+      headers: {
+        "API-Version": this.state.apiVersion
+      }
+    })
+      .then(response => {
+        console.log(`Response status: ${response.status}`);
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        return response.json();
       })
-      .catch(error => console.log(error))
+      .then(data => {
+        console.log(`Receiving task list data from Spring-Server (${this.state.apiVersion}): `);
+        console.log(data);
+        console.log(`Data type: ${typeof data}, Is Array: ${Array.isArray(data)}`);
+        
+        if (this.state.apiVersion === "v2") {
+          // For v2, extract tasks from the response object
+          const tasks = data.tasks || [];
+          console.log(`V2 tasks extracted:`, tasks);
+          this.setState({todos: Array.isArray(tasks) ? tasks : []});
+        } else {
+          // For v1, data should be directly the array
+          console.log(`V1 tasks received:`, data);
+          this.setState({todos: Array.isArray(data) ? data : []});
+        }
+      })
+      .catch(error => {
+        console.error('Error loading tasks:', error);
+        // Set empty array on error to prevent filter issues
+        this.setState({todos: []});
+      })
   }
 
  /** Is called when the Done-Butten is pressed. It sends a POST request to the API endpoint '/delete' and updates the component's state with the new todo.
   ** In this case if the task with the unique taskdecription is found on the server, it will be removed from the list.
   */
   handleClick = taskdescription => {
-    console.log("Sending task description to delete on Spring-Server: "+taskdescription);
+    console.log(`Sending task description to delete on Spring-Server (${this.state.apiVersion}): ${taskdescription}`);
     fetch(`http://localhost:8080/api/delete`, { // API endpoint (the complete URL!) to delete an existing taskdescription in the list
       method: "POST",
       headers: {
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        "API-Version": this.state.apiVersion  // Add API version header
       },
       body: JSON.stringify({ taskdescription: taskdescription })
     })
     .then(response => {
-      console.log("Receiving answer after deleting on Spring-Server: ");
+      console.log(`Receiving answer after deleting on Spring-Server (${this.state.apiVersion}): `);
       console.log(response);
-      window.location.href = "/";
+      
+      if (this.state.apiVersion === "v2") {
+        // For v2, handle JSON response
+        return response.json().then(data => {
+          console.log("V2 Delete response:", data);
+          this.loadTasks(); // Reload tasks
+        });
+      } else {
+        // For v1, just reload
+        this.loadTasks();
+      }
     })
     .catch(error => console.log(error))
+  }
+
+  /**
+   * Filter and render tasks based on search term
+   * @param {*} todos : Task list
+   * @returns html code snippet
+   */
+  getFilteredTodos() {
+    return this.state.todos.filter(todo => 
+      todo.taskdescription.toLowerCase().includes(this.state.searchTerm.toLowerCase())
+    );
   }
 
   /**
@@ -139,14 +213,33 @@ class App extends React.Component {
    * @returns html code snippet
    */
   renderTasks(todos) {
+    if (todos.length === 0) {
+      return <p>No tasks found.</p>;
+    }
+
     return (
       <ul>
-        {todos.map((todo, index) => (
-          <li key={todo.taskdescription}>
-            {"Task " + (index+1) + ": "+ todo.taskdescription}
-            <button onClick={this.handleClick.bind(this, todo.taskdescription)}>Done</button>
-          </li>
-        ))}
+        {todos.map((todo, index) => {
+          // Handle both v1 and v2 task formats
+          const taskDesc = todo.taskdescription;
+          const taskId = todo.id || null;
+          const taskStatus = todo.status || null;
+          const createdAt = todo.createdAt || null;
+          
+          return (
+            <li key={taskId || taskDesc}>
+              <div>
+                <strong>Task {index+1}:</strong> {taskDesc}
+                {this.state.apiVersion === "v2" && (
+                  <div style={{fontSize: '0.8em', color: '#666', marginTop: '4px'}}>
+                    ID: {taskId} | Status: {taskStatus} | Created: {createdAt}
+                  </div>
+                )}
+              </div>
+              <button onClick={this.handleClick.bind(this, taskDesc)}>Done</button>
+            </li>
+          );
+        })}
       </ul>
     );
   }
@@ -155,6 +248,8 @@ class App extends React.Component {
   ** It renders the header, form, and todo list.
   */
   render() {
+    const filteredTodos = this.getFilteredTodos();
+    
     return (
       <div className="App">
         <header className="App-header">
@@ -162,16 +257,66 @@ class App extends React.Component {
           <h1>
             ToDo Liste
           </h1>
-          <form onSubmit={this.handleSubmit}>
+          
+          {/* API Version Selector */}
+          <div style={{marginBottom: '20px'}}>
+            <label htmlFor="version-select" style={{marginRight: '10px'}}>API Version:</label>
+            <select 
+              id="version-select"
+              value={this.state.apiVersion} 
+              onChange={this.handleVersionChange}
+              style={{padding: '5px', fontSize: '14px'}}
+            >
+              <option value="v1">Version 1 (Basic)</option>
+              <option value="v2">Version 2 (Enhanced)</option>
+            </select>
+            <span style={{marginLeft: '10px', fontSize: '0.8em', color: '#ccc'}}>
+              Current: {this.state.apiVersion}
+            </span>
+          </div>
+          
+          {/* Search Box */}
+          <div style={{marginBottom: '20px'}}>
             <input
               type="text"
+              placeholder="Search todos..."
+              value={this.state.searchTerm}
+              onChange={this.handleSearchChange}
+              style={{padding: '8px', fontSize: '14px', width: '200px'}}
+            />
+            {this.state.searchTerm && (
+              <button 
+                onClick={() => this.setState({searchTerm: ''})} 
+                style={{marginLeft: '5px', padding: '8px'}}
+              >
+                ✕
+              </button>
+            )}
+          </div>
+          
+          {/* Add Task Form */}
+          <form onSubmit={this.handleSubmit} style={{marginBottom: '20px'}}>
+            <input
+              type="text"
+              placeholder="Enter new task..."
               value={this.state.taskdescription}
               onChange={this.handleChange}
+              style={{padding: '8px', fontSize: '14px', width: '200px'}}
             />
-            <button type="submit">Absenden</button>
+            <button type="submit" style={{marginLeft: '10px', padding: '8px 16px'}}>Absenden</button>
           </form>
+          
+          {/* Task Statistics */}
+          <div style={{marginBottom: '20px', fontSize: '0.9em', color: '#ccc'}}>
+            Showing {filteredTodos.length} of {this.state.todos.length} tasks
+            {this.state.searchTerm && (
+              <span> (filtered by "{this.state.searchTerm}")</span>
+            )}
+          </div>
+          
+          {/* Task List */}
           <div>
-            {this.renderTasks(this.state.todos)}
+            {this.renderTasks(filteredTodos)}
           </div>
         </header>
       </div>
