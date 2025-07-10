@@ -1,0 +1,84 @@
+version: '3.8'
+
+# Docker Compose for CI-Built Images
+# Usage: docker-compose -f docker-compose.ci.yml up
+# This pulls images built by GitHub Actions CI
+
+services:
+  # Backend from CI Registry
+  backend:
+    image: ghcr.io/eltdrfrs/m324_projekt_todolist/todo-backend:latest
+    container_name: m324_backend_ci
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/todolist
+      - SPRING_DATASOURCE_USERNAME=todouser
+      - SPRING_DATASOURCE_PASSWORD=todopass
+      - JAVA_OPTS=-Xmx512m -Xms256m
+    depends_on:
+      mysql:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - todo-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Frontend from CI Registry  
+  frontend:
+    image: ghcr.io/eltdrfrs/m324_projekt_todolist/todo-frontend:latest
+    container_name: m324_frontend_ci
+    ports:
+      - "3000:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - todo-network
+    environment:
+      - REACT_APP_API_URL=http://localhost:8080/api
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # MySQL Database
+  mysql:
+    image: mysql:8.0
+    container_name: m324_mysql_ci
+    environment:
+      - MYSQL_ROOT_PASSWORD=rootpass
+      - MYSQL_DATABASE=todolist
+      - MYSQL_USER=todouser
+      - MYSQL_PASSWORD=todopass
+      - MYSQL_INNODB_BUFFER_POOL_SIZE=256M
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_ci_data:/var/lib/mysql
+      - ./backend/src/main/resources/sql:/docker-entrypoint-initdb.d:ro
+    restart: unless-stopped
+    networks:
+      - todo-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "todouser", "-ptodopass"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+volumes:
+  mysql_ci_data:
+    driver: local
+
+networks:
+  todo-network:
+    driver: bridge
